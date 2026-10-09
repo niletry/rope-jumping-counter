@@ -23,7 +23,8 @@ data class WorkoutConfig(
 
 enum class WorkoutPhase {
     PREPARING,
-    COUNTDOWN,
+    /** Calibrated; timing and counting start with the first detected jump. */
+    ARMED,
     ACTIVE,
     REST,
     PAUSED,

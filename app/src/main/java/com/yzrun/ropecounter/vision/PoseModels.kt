@@ -32,4 +32,6 @@ data class JumpDetection(
     val quality: Float,
     val guidance: String,
     val normalizedLift: Float,
+    /** Jumps completed in this frame; can exceed 1 right after calibration replays buffered frames. */
+    val jumpCount: Int = if (jumpDetected) 1 else 0,
 )

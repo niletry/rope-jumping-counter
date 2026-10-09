@@ -22,4 +22,5 @@ data class AppUiState(
     val lensFacing: Int = CameraSelector.LENS_FACING_FRONT,
     val errorMessage: String? = null,
     val history: List<WorkoutRecord> = emptyList(),
+    val replayDir: String? = null,
 )

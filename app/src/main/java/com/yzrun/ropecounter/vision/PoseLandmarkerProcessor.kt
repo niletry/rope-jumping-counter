@@ -31,9 +31,23 @@ class PoseLandmarkerProcessor(
             .setMinPosePresenceConfidence(0.50f)
             .setMinTrackingConfidence(0.50f)
             .setResultListener { result, inputImage -> handleResult(result, inputImage.width, inputImage.height) }
-            .setErrorListener { error -> onError(error.message ?: "姿态识别发生错误") }
+            .setErrorListener { error -> isBusy = false; onError(error.message ?: "姿态识别发生错误") }
             .build()
         landmarker = PoseLandmarker.createFromOptions(context, options)
+    }
+
+    @Volatile
+    var isBusy: Boolean = false
+        private set
+
+    fun detect(bitmap: Bitmap, timestampMs: Long) {
+        try {
+            isBusy = true
+            landmarker.detectAsync(BitmapImageBuilder(bitmap).build(), timestampMs)
+        } catch (error: Throwable) {
+            isBusy = false
+            onError(error.message ?: "无法分析回放画面")
+        }
     }
 
     fun detect(image: ImageProxy) {
@@ -63,6 +77,7 @@ class PoseLandmarkerProcessor(
     }
 
     private fun handleResult(result: PoseLandmarkerResult, width: Int, height: Int) {
+        isBusy = false
         val points = result.landmarks().firstOrNull().orEmpty().map { landmark ->
             PosePoint(
                 x = landmark.x(),

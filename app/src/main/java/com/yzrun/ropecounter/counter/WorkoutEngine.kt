@@ -25,12 +25,8 @@ class WorkoutEngine(
         when (phase) {
             WorkoutPhase.PREPARING -> Unit
 
-            WorkoutPhase.COUNTDOWN -> {
-                if (nowMs - phaseStartMs >= START_COUNTDOWN_MS) {
-                    phase = WorkoutPhase.ACTIVE
-                    phaseStartMs = nowMs
-                }
-            }
+            // ARMED has no timer: the group starts on the first jump (see recordJump).
+            WorkoutPhase.ARMED -> Unit
 
             WorkoutPhase.ACTIVE -> {
                 if (
@@ -43,7 +39,7 @@ class WorkoutEngine(
 
             WorkoutPhase.REST -> {
                 if (nowMs - phaseStartMs >= config.restSec * 1_000L) {
-                    phase = WorkoutPhase.COUNTDOWN
+                    phase = WorkoutPhase.ARMED
                     phaseStartMs = nowMs
                 }
             }
@@ -57,14 +53,14 @@ class WorkoutEngine(
 
     fun markPoseReady(nowMs: Long): WorkoutSnapshot {
         if (phase == WorkoutPhase.PREPARING) {
-            phase = WorkoutPhase.COUNTDOWN
+            phase = WorkoutPhase.ARMED
             phaseStartMs = nowMs
         }
         return snapshot(nowMs)
     }
 
     fun requirePosePreparation(nowMs: Long): WorkoutSnapshot {
-        if (phase == WorkoutPhase.COUNTDOWN) {
+        if (phase == WorkoutPhase.ARMED) {
             phase = WorkoutPhase.PREPARING
             phaseStartMs = nowMs
         }
@@ -73,6 +69,11 @@ class WorkoutEngine(
 
     fun recordJump(nowMs: Long): WorkoutSnapshot {
         tick(nowMs)
+        if (phase == WorkoutPhase.ARMED) {
+            // The first jump starts the clock and is itself counted.
+            phase = WorkoutPhase.ACTIVE
+            phaseStartMs = nowMs
+        }
         if (phase != WorkoutPhase.ACTIVE) return snapshot(nowMs)
 
         totalCount += 1
@@ -88,7 +89,7 @@ class WorkoutEngine(
 
     fun togglePause(nowMs: Long): WorkoutSnapshot {
         if (phase == WorkoutPhase.PAUSED) {
-            val restored = pausedFrom ?: WorkoutPhase.COUNTDOWN
+            val restored = pausedFrom ?: WorkoutPhase.ARMED
             phaseStartMs += (nowMs - pausedAtMs).coerceAtLeast(0L)
             phase = restored
             pausedFrom = null
@@ -125,7 +126,7 @@ class WorkoutEngine(
 
         currentGroup += 1
         groupCount = 0
-        phase = if (config.restSec == 0) WorkoutPhase.COUNTDOWN else WorkoutPhase.REST
+        phase = if (config.restSec == 0) WorkoutPhase.ARMED else WorkoutPhase.REST
         phaseStartMs = nowMs
     }
 
@@ -140,10 +141,6 @@ class WorkoutEngine(
         val totalActive = activeBeforeCurrentPhaseMs + groupElapsed
 
         val remainingSec = when (effectivePhase) {
-            WorkoutPhase.COUNTDOWN -> remainingSeconds(
-                START_COUNTDOWN_MS - (referenceNow - phaseStartMs),
-            )
-
             WorkoutPhase.REST -> remainingSeconds(
                 config.restSec * 1_000L - (referenceNow - phaseStartMs),
             )
@@ -155,6 +152,7 @@ class WorkoutEngine(
             }
 
             WorkoutPhase.PREPARING,
+            WorkoutPhase.ARMED,
             WorkoutPhase.PAUSED,
             WorkoutPhase.COMPLETE,
             null,
@@ -177,8 +175,4 @@ class WorkoutEngine(
 
     private fun remainingSeconds(milliseconds: Long): Int =
         ceil(milliseconds.coerceAtLeast(0L) / 1_000.0).toInt()
-
-    private companion object {
-        const val START_COUNTDOWN_MS = 3_000L
-    }
 }

@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        intent?.getStringExtra("replay_dir")?.let { viewModel.setReplayDir(it) }
 
         setContent {
             RopeCounterTheme {

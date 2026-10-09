@@ -31,7 +31,6 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
     private var sessionSaved = false
     private var lastGuidancePrompt: String? = null
     private var lastGuidancePromptAtMs = Long.MIN_VALUE / 2
-    private var lastCountdownSecond: Int? = null
 
     private val _state = MutableStateFlow(
         AppUiState(history = historyStore.load()),
@@ -60,7 +59,6 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
         sessionSaved = false
         lastGuidancePrompt = null
         lastGuidancePromptAtMs = Long.MIN_VALUE / 2
-        lastCountdownSecond = null
         feedback.stopSpeech()
         _state.update {
             it.copy(
@@ -78,7 +76,7 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             val currentWorkout = _state.value.workout
             val shouldDetect = currentWorkout?.phase == WorkoutPhase.PREPARING ||
-                currentWorkout?.phase == WorkoutPhase.COUNTDOWN ||
+                currentWorkout?.phase == WorkoutPhase.ARMED ||
                 currentWorkout?.phase == WorkoutPhase.ACTIVE
             if (!shouldDetect) {
                 _state.update { it.copy(poseFrame = frame) }
@@ -95,18 +93,18 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
             ) {
                 snapshot = engine?.markPoseReady(now)
                 feedback.phaseChanged()
-                snapshot?.phaseRemainingSec?.let {
-                    feedback.speakCountdown(it)
-                    lastCountdownSecond = it
-                }
             } else if (
-                currentWorkout?.phase == WorkoutPhase.COUNTDOWN &&
+                currentWorkout?.phase == WorkoutPhase.ARMED &&
                 detection.state in setOf(MotionState.CALIBRATING, MotionState.LOST)
             ) {
                 snapshot = engine?.requirePosePreparation(now)
-                lastCountdownSecond = null
-            } else if (detection.jumpDetected && currentWorkout?.phase == WorkoutPhase.ACTIVE) {
-                snapshot = engine?.recordJump(now)
+            } else if (
+                detection.jumpDetected &&
+                (currentWorkout?.phase == WorkoutPhase.ACTIVE || currentWorkout?.phase == WorkoutPhase.ARMED)
+            ) {
+                // Calibration replay can report more than one jump in a single frame.
+                repeat(detection.jumpCount) { snapshot = engine?.recordJump(now) }
+                if (currentWorkout.phase == WorkoutPhase.ARMED) feedback.speakStart()
                 feedback.jump()
             }
             _state.update {
@@ -171,6 +169,10 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
         detector.reset()
     }
 
+    fun setReplayDir(dir: String?) {
+        _state.update { it.copy(replayDir = dir) }
+    }
+
     fun showError(message: String) {
         _state.update { it.copy(errorMessage = message) }
     }
@@ -183,22 +185,7 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
         val currentEngine = engine ?: return
         val previous = _state.value.workout
         val updated = currentEngine.tick(SystemClock.elapsedRealtime())
-        if (
-            updated.phase == WorkoutPhase.COUNTDOWN &&
-            updated.phaseRemainingSec != null &&
-            updated.phaseRemainingSec != lastCountdownSecond
-        ) {
-            feedback.speakCountdown(updated.phaseRemainingSec)
-            lastCountdownSecond = updated.phaseRemainingSec
-        }
         if (previous?.phase != updated.phase) {
-            if (
-                previous?.phase == WorkoutPhase.COUNTDOWN &&
-                updated.phase == WorkoutPhase.ACTIVE
-            ) {
-                feedback.speakStart()
-                lastCountdownSecond = null
-            }
             if (updated.phase in setOf(WorkoutPhase.ACTIVE, WorkoutPhase.REST, WorkoutPhase.COMPLETE)) {
                 feedback.phaseChanged()
             }

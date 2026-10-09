@@ -198,6 +198,42 @@ class JumpDetectorTest {
         assertEquals(landingPositions.size, jumps)
     }
 
+    @Test
+    fun alreadyJumpingAtStart_startsCountingWithoutStandingStill() {
+        val detector = JumpDetector()
+        var timestamp = 0L
+        val cycle = listOf(0f, 0.012f, 0.030f, 0.048f, 0.055f, 0.045f, 0.025f, 0.008f, 0f, 0f)
+        var jumps = 0
+        repeat(10) {
+            cycle.forEach { offset ->
+                // Hand-held camera: add a slow drift to every landmark.
+                val drift = 0.004f * (timestamp / 33 % 7)
+                if (detector.process(frame(timestamp, offset, horizontalShift = drift)).jumpDetected) jumps += 1
+                timestamp += 33
+            }
+        }
+
+        // The first cycles are consumed by calibration; every later cycle must be counted.
+        assert(jumps >= 7) { "expected at least 7 jumps, got $jumps" }
+    }
+
+    @Test
+    fun jumpDuringCalibrationWindow_isCountedAfterReplay() {
+        val detector = JumpDetector()
+        var timestamp = 0L
+        val cycle = listOf(0f, 0.012f, 0.030f, 0.048f, 0.055f, 0.045f, 0.025f, 0.008f, 0f, 0f)
+        var jumps = 0
+        // Three jumps starting at frame 0. The first one completes inside the 20-frame
+        // calibration window and must be recovered when the window is replayed.
+        repeat(3) {
+            cycle.forEach { offset ->
+                jumps += detector.process(frame(timestamp, offset)).jumpCount
+                timestamp += 33
+            }
+        }
+        assertEquals(3, jumps)
+    }
+
     private fun frame(
         timestampMs: Long,
         shiftUp: Float,

@@ -94,3 +94,9 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
+// Forward -PreplayCsv=<path> to the unit-test JVM so ReplayHarnessTest can find dumped landmarks.
+tasks.withType<Test>().configureEach {
+    (project.findProperty("replayCsv") as String?)?.let { systemProperty("replayCsv", it) }
+    testLogging.showStandardStreams = true
+}

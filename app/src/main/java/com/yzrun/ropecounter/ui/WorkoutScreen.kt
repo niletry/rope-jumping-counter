@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yzrun.ropecounter.camera.CameraPoseView
+import com.yzrun.ropecounter.camera.ReplayPoseView
 import com.yzrun.ropecounter.data.WorkoutMode
 import com.yzrun.ropecounter.data.WorkoutPhase
 import com.yzrun.ropecounter.data.WorkoutSnapshot
@@ -63,16 +64,28 @@ fun WorkoutScreen(
     BackHandler(enabled = workout.phase != WorkoutPhase.COMPLETE) { showEndDialog = true }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        CameraPoseView(
-            lensFacing = state.lensFacing,
-            analyzeFrames = workout.phase != WorkoutPhase.COMPLETE &&
-                workout.phase != WorkoutPhase.PAUSED &&
-                workout.phase != WorkoutPhase.REST,
-            poseFrame = state.poseFrame,
-            onPoseFrame = onPoseFrame,
-            onError = onError,
-            modifier = Modifier.fillMaxSize(),
-        )
+        val analyzeFrames = workout.phase != WorkoutPhase.COMPLETE &&
+            workout.phase != WorkoutPhase.PAUSED &&
+            workout.phase != WorkoutPhase.REST
+        if (state.replayDir != null) {
+            ReplayPoseView(
+                replayDir = state.replayDir,
+                analyzeFrames = analyzeFrames,
+                poseFrame = state.poseFrame,
+                onPoseFrame = onPoseFrame,
+                onError = onError,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            CameraPoseView(
+                lensFacing = state.lensFacing,
+                analyzeFrames = analyzeFrames,
+                poseFrame = state.poseFrame,
+                onPoseFrame = onPoseFrame,
+                onError = onError,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Text(
             text = workout.totalCount.toString(),
@@ -206,7 +219,7 @@ private fun MinimalBottomControls(
 
 private fun statusText(workout: WorkoutSnapshot, guidance: String?): String = when (workout.phase) {
     WorkoutPhase.PREPARING -> guidance ?: "请全身入镜并站稳"
-    WorkoutPhase.COUNTDOWN -> "${workout.phaseRemainingSec ?: 3} 秒后开始"
+    WorkoutPhase.ARMED -> "跳起来就开始计数"
     WorkoutPhase.ACTIVE -> guidance?.takeIf { it.startsWith("请") } ?: "计数中"
     WorkoutPhase.REST -> "休息 ${workout.phaseRemainingSec ?: 0} 秒"
     WorkoutPhase.PAUSED -> "已暂停"
