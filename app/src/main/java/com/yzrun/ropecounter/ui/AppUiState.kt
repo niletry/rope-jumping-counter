@@ -23,4 +23,7 @@ data class AppUiState(
     val errorMessage: String? = null,
     val history: List<WorkoutRecord> = emptyList(),
     val replayDir: String? = null,
+    val customVoices: Set<VoicePrompt> = emptySet(),
+    val recording: VoicePrompt? = null,
+    val countBeepEnabled: Boolean = false,
 )

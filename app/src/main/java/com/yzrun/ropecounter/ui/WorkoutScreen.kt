@@ -87,24 +87,54 @@ fun WorkoutScreen(
             )
         }
 
-        Text(
-            text = workout.totalCount.toString(),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(top = 10.dp, end = 20.dp),
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 72.sp,
-            lineHeight = 76.sp,
-            fontWeight = FontWeight.Black,
-            style = TextStyle(
-                shadow = Shadow(
-                    color = Color.Black.copy(alpha = 0.85f),
-                    offset = Offset(0f, 3f),
-                    blurRadius = 10f,
-                ),
+        val hudShadow = TextStyle(
+            shadow = Shadow(
+                color = Color.Black.copy(alpha = 0.85f),
+                offset = Offset(0f, 3f),
+                blurRadius = 10f,
             ),
         )
+        // Count and clock side by side so both are readable from a distance while jumping.
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .fillMaxWidth()
+                .padding(top = 10.dp, start = 20.dp, end = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Column {
+                Text(
+                    text = hudClockText(workout),
+                    color = Color.White,
+                    fontSize = 44.sp,
+                    lineHeight = 48.sp,
+                    fontWeight = FontWeight.Bold,
+                    style = hudShadow,
+                )
+                Text(
+                    text = hudClockLabel(workout),
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelMedium.merge(hudShadow),
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = workout.totalCount.toString(),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 72.sp,
+                    lineHeight = 76.sp,
+                    fontWeight = FontWeight.Black,
+                    style = hudShadow,
+                )
+                Text(
+                    text = "次",
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelMedium.merge(hudShadow),
+                )
+            }
+        }
 
         MinimalBottomControls(
             workout = workout,
@@ -216,6 +246,21 @@ private fun MinimalBottomControls(
         }
     }
 }
+
+/** Big clock: remaining time for timed groups, otherwise elapsed active time. Pause freezes it. */
+private fun hudClockText(workout: WorkoutSnapshot): String {
+    val timing = workout.phase == WorkoutPhase.ACTIVE ||
+        (workout.phase == WorkoutPhase.PAUSED && workout.pausedFrom == WorkoutPhase.ACTIVE)
+    return if (workout.config.mode == WorkoutMode.FIXED_TIME) {
+        val remaining = if (timing) workout.phaseRemainingSec ?: workout.config.durationPerGroupSec else workout.config.durationPerGroupSec
+        formatClock(remaining * 1_000L)
+    } else {
+        formatClock(workout.totalActiveMs)
+    }
+}
+
+private fun hudClockLabel(workout: WorkoutSnapshot): String =
+    if (workout.config.mode == WorkoutMode.FIXED_TIME) "本组剩余" else "已跳时间"
 
 private fun statusText(workout: WorkoutSnapshot, guidance: String?): String = when (workout.phase) {
     WorkoutPhase.PREPARING -> guidance ?: "请全身入镜并站稳"

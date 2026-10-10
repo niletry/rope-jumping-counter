@@ -1,5 +1,18 @@
 package com.yzrun.ropecounter.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +60,14 @@ fun SetupScreen(
     onConfigChange: (WorkoutConfig) -> Unit,
     onStart: () -> Unit,
     onHistory: () -> Unit,
+    customVoices: Set<VoicePrompt> = emptySet(),
+    recording: VoicePrompt? = null,
+    onStartRecording: (VoicePrompt) -> Unit = {},
+    onStopRecording: () -> Unit = {},
+    onResetVoice: (VoicePrompt) -> Unit = {},
+    onPreviewVoice: (VoicePrompt) -> Unit = {},
+    countBeepEnabled: Boolean = false,
+    onCountBeepChange: (Boolean) -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -136,6 +157,20 @@ fun SetupScreen(
             }
 
             Spacer(Modifier.height(18.dp))
+            Text("语音鼓励", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(10.dp))
+            VoicePromptCard(
+                customVoices = customVoices,
+                recording = recording,
+                onStartRecording = onStartRecording,
+                onStopRecording = onStopRecording,
+                onResetVoice = onResetVoice,
+                onPreviewVoice = onPreviewVoice,
+                countBeepEnabled = countBeepEnabled,
+                onCountBeepChange = onCountBeepChange,
+            )
+
+            Spacer(Modifier.height(18.dp))
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
@@ -145,7 +180,7 @@ fun SetupScreen(
                     Text("拍摄提示", fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "固定手机并让全身进入画面；开始后站稳约 2 秒完成校准。视频只在设备上实时处理，不会保存或上传。",
+                        "固定手机并让全身进入画面，直接开跳即可，从第一跳开始计时计数。视频只在设备上实时处理，不会保存或上传。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -167,6 +202,96 @@ fun SetupScreen(
                 )
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun VoicePromptCard(
+    customVoices: Set<VoicePrompt>,
+    recording: VoicePrompt?,
+    onStartRecording: (VoicePrompt) -> Unit,
+    onStopRecording: () -> Unit,
+    onResetVoice: (VoicePrompt) -> Unit,
+    onPreviewVoice: (VoicePrompt) -> Unit,
+    countBeepEnabled: Boolean,
+    onCountBeepChange: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    var pendingPrompt by remember { mutableStateOf<VoicePrompt?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val prompt = pendingPrompt
+        pendingPrompt = null
+        if (granted && prompt != null) onStartRecording(prompt)
+    }
+
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Text(
+                "可以录一句自己的话代替默认提示音，最长 3 秒。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            VoicePrompt.entries.forEach { prompt ->
+                val isRecording = recording == prompt
+                val isCustom = prompt in customVoices
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(prompt.label, fontWeight = FontWeight.Medium)
+                        Text(
+                            when {
+                                isRecording -> "录音中…"
+                                isCustom -> "已使用你的录音"
+                                else -> prompt.hint
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { onPreviewVoice(prompt) }, enabled = recording == null) { Text("试听") }
+                    if (isCustom && !isRecording) {
+                        TextButton(onClick = { onResetVoice(prompt) }, enabled = recording == null) { Text("恢复默认") }
+                    }
+                    Button(
+                        onClick = {
+                            if (isRecording) {
+                                onStopRecording()
+                            } else if (
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                                PackageManager.PERMISSION_GRANTED
+                            ) {
+                                onStartRecording(prompt)
+                            } else {
+                                pendingPrompt = prompt
+                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        enabled = recording == null || isRecording,
+                    ) {
+                        Text(if (isRecording) "停止" else "录音")
+                    }
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("每次计数“嘀”一声", fontWeight = FontWeight.Medium)
+                    Text(
+                        "关闭后只保留语音鼓励",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = countBeepEnabled, onCheckedChange = onCountBeepChange)
+            }
         }
     }
 }

@@ -6,7 +6,9 @@ import android.graphics.Matrix
 import androidx.camera.core.ImageProxy
 import androidx.core.graphics.createBitmap
 import com.google.mediapipe.framework.image.BitmapImageBuilder
+import android.util.Log
 import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
@@ -19,11 +21,35 @@ class PoseLandmarkerProcessor(
 ) : Closeable {
     private val landmarker: PoseLandmarker
 
+    /** Which delegate the landmarker ended up on; shown in the replay HUD for diagnostics. */
+    val delegateName: String
+
     init {
+        // Prefer the GPU: it is faster for this model and, unlike the CPU path, is not affected by
+        // the big-core frequency caps phones apply when they get warm while charging. Fall back to
+        // the CPU if the GPU delegate cannot be initialised on this device.
+        var created: PoseLandmarker? = null
+        var name = "CPU"
+        for (delegate in listOf(Delegate.GPU, Delegate.CPU)) {
+            created = runCatching { PoseLandmarker.createFromOptions(context, options(delegate)) }
+                .onFailure { Log.w(TAG, "Pose landmarker on $delegate failed: ${it.message}") }
+                .getOrNull()
+            if (created != null) {
+                name = delegate.name
+                break
+            }
+        }
+        landmarker = created ?: throw IllegalStateException("无法初始化姿态模型")
+        delegateName = name
+        Log.i(TAG, "Pose landmarker running on $name")
+    }
+
+    private fun options(delegate: Delegate): PoseLandmarker.PoseLandmarkerOptions {
         val baseOptions = BaseOptions.builder()
             .setModelAssetPath(MODEL_ASSET)
+            .setDelegate(delegate)
             .build()
-        val options = PoseLandmarker.PoseLandmarkerOptions.builder()
+        return PoseLandmarker.PoseLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(RunningMode.LIVE_STREAM)
             .setNumPoses(1)
@@ -33,7 +59,6 @@ class PoseLandmarkerProcessor(
             .setResultListener { result, inputImage -> handleResult(result, inputImage.width, inputImage.height) }
             .setErrorListener { error -> isBusy = false; onError(error.message ?: "姿态识别发生错误") }
             .build()
-        landmarker = PoseLandmarker.createFromOptions(context, options)
     }
 
     @Volatile
@@ -115,5 +140,6 @@ class PoseLandmarkerProcessor(
 
     private companion object {
         const val MODEL_ASSET = "pose_landmarker_lite.task"
+        const val TAG = "PoseLandmarker"
     }
 }

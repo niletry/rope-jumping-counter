@@ -37,6 +37,14 @@ class MainActivity : ComponentActivity() {
                         onConfigChange = viewModel::updateConfig,
                         onStart = viewModel::startWorkout,
                         onHistory = viewModel::openHistory,
+                        customVoices = state.customVoices,
+                        recording = state.recording,
+                        onStartRecording = viewModel::startRecording,
+                        onStopRecording = viewModel::stopRecording,
+                        onResetVoice = viewModel::resetVoice,
+                        onPreviewVoice = viewModel::previewVoice,
+                        countBeepEnabled = state.countBeepEnabled,
+                        onCountBeepChange = viewModel::setCountBeepEnabled,
                     )
 
                     AppScreen.WORKOUT -> WorkoutScreen(

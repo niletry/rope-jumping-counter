@@ -25,6 +25,8 @@ import kotlinx.coroutines.launch
 class RopeCounterViewModel(application: Application) : AndroidViewModel(application) {
     private val historyStore = SessionHistoryStore(application)
     private val feedback = FeedbackPlayer(application)
+    private val recorder = VoiceRecorder(application)
+    private val prefs = application.getSharedPreferences("settings", Application.MODE_PRIVATE)
     private val detector = JumpDetector()
     private var engine: WorkoutEngine? = null
     private var sessionStartedAtEpochMs = 0L
@@ -33,11 +35,12 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
     private var lastGuidancePromptAtMs = Long.MIN_VALUE / 2
 
     private val _state = MutableStateFlow(
-        AppUiState(history = historyStore.load()),
+        AppUiState(history = historyStore.load(), customVoices = customVoices(), countBeepEnabled = prefs.getBoolean(KEY_COUNT_BEEP, false)),
     )
     val state: StateFlow<AppUiState> = _state.asStateFlow()
 
     init {
+        feedback.countBeepEnabled = _state.value.countBeepEnabled
         viewModelScope.launch {
             while (isActive) {
                 updateClock()
@@ -103,9 +106,12 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
                 (currentWorkout?.phase == WorkoutPhase.ACTIVE || currentWorkout?.phase == WorkoutPhase.ARMED)
             ) {
                 // Calibration replay can report more than one jump in a single frame.
+                val before = currentWorkout.totalCount
                 repeat(detection.jumpCount) { snapshot = engine?.recordJump(now) }
                 if (currentWorkout.phase == WorkoutPhase.ARMED) feedback.speakStart()
                 feedback.jump()
+                val after = snapshot?.totalCount ?: before
+                feedback.promptFor(before, after)?.let { feedback.speakPrompt(it) }
             }
             _state.update {
                 it.copy(
@@ -171,6 +177,47 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setReplayDir(dir: String?) {
         _state.update { it.copy(replayDir = dir) }
+    }
+
+    private fun customVoices(): Set<VoicePrompt> =
+        VoicePrompt.entries.filter { it.customFile(getApplication()).exists() }.toSet()
+
+    fun startRecording(prompt: VoicePrompt) {
+        runCatching {
+            recorder.start(prompt.customFile(getApplication())) { onRecordingFinished() }
+        }.onFailure {
+            showError("无法开始录音：${it.message ?: "未知错误"}")
+            return
+        }
+        feedback.stopSpeech()
+        _state.update { it.copy(recording = prompt) }
+    }
+
+    fun stopRecording() {
+        recorder.stop()
+        onRecordingFinished()
+    }
+
+    private fun onRecordingFinished() {
+        feedback.reloadPrompts()
+        _state.update { it.copy(recording = null, customVoices = customVoices()) }
+    }
+
+    fun resetVoice(prompt: VoicePrompt) {
+        if (recorder.isRecording) recorder.stop(discard = true)
+        prompt.customFile(getApplication()).delete()
+        onRecordingFinished()
+    }
+
+    fun setCountBeepEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_COUNT_BEEP, enabled).apply()
+        feedback.countBeepEnabled = enabled
+        _state.update { it.copy(countBeepEnabled = enabled) }
+        if (enabled) feedback.jump()
+    }
+
+    fun previewVoice(prompt: VoicePrompt) {
+        feedback.speakPrompt(prompt)
     }
 
     fun showError(message: String) {
@@ -240,5 +287,6 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
 
     private companion object {
         const val GUIDANCE_REMINDER_MS = 5_000L
+        const val KEY_COUNT_BEEP = "count_beep_enabled"
     }
 }

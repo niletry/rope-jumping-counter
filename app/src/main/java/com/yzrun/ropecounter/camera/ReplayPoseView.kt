@@ -107,7 +107,7 @@ fun ReplayPoseView(
                         analyzed++
                     }
                     val image = bitmap.asImageBitmap()
-                    val text = "回放 ${index + 1}/${files.size} · 已分析 $analyzed"
+                    val text = "回放 ${index + 1}/${files.size} · 已分析 $analyzed · ${processor.delegateName}"
                     withContext(Dispatchers.Main) {
                         currentBitmap = image
                         progressText = text
@@ -115,7 +115,7 @@ fun ReplayPoseView(
                 }
                 index++
             }
-            withContext(Dispatchers.Main) { progressText = "回放结束 · 已分析 $analyzed/${files.size}" }
+            withContext(Dispatchers.Main) { progressText = "回放结束 · 已分析 $analyzed/${files.size} · ${processor.delegateName}" }
         }
     }
 

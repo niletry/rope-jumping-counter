@@ -11,12 +11,14 @@ import com.yzrun.ropecounter.R
 import java.util.Collections
 
 /** Plays short audio files bundled in res/raw; it never invokes TTS or a network service. */
-class FeedbackPlayer(context: Context) {
+class FeedbackPlayer(private val context: Context) {
     private val soundPool = SoundPool.Builder()
         .setMaxStreams(2)
         .setAudioAttributes(
             AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                // Media usage: audible under Do-Not-Disturb and controlled by the media volume keys.
+                // USAGE_ASSISTANCE_SONIFICATION maps to the system stream, which DND mutes.
+                .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build(),
         )
@@ -29,6 +31,9 @@ class FeedbackPlayer(context: Context) {
     private val twoSample: Int
     private val oneSample: Int
     private val startSample: Int
+    private val promptSamples = HashMap<VoicePrompt, Int>()
+    /** Per-jump beep; off by default because many users find it annoying. */
+    @Volatile var countBeepEnabled: Boolean = false
     @Volatile private var pendingVoiceSample: Int? = null
     @Volatile private var activeVoiceStream = 0
 
@@ -56,10 +61,11 @@ class FeedbackPlayer(context: Context) {
         twoSample = soundPool.load(context, R.raw.countdown_two, 1)
         oneSample = soundPool.load(context, R.raw.countdown_one, 1)
         startSample = soundPool.load(context, R.raw.prompt_start, 1)
+        reloadPrompts()
     }
 
     fun jump() {
-        if (countBeepSample in loadedSamples) {
+        if (countBeepEnabled && countBeepSample in loadedSamples) {
             soundPool.play(
                 countBeepSample,
                 MAX_PLAYBACK_VOLUME,
@@ -96,6 +102,34 @@ class FeedbackPlayer(context: Context) {
         playVoice(startSample)
     }
 
+    /** (Re)loads milestone prompts, preferring a user recording over the bundled default. */
+    fun reloadPrompts() {
+        VoicePrompt.entries.forEach { prompt ->
+            promptSamples[prompt]?.let { old ->
+                soundPool.unload(old)
+                loadedSamples -= old
+            }
+            val custom = prompt.customFile(context)
+            promptSamples[prompt] = if (custom.exists()) {
+                soundPool.load(custom.absolutePath, 1)
+            } else {
+                soundPool.load(context, prompt.defaultRes, 1)
+            }
+        }
+    }
+
+    /** Plays a milestone prompt ("加油" every 10, "真棒" every 100, or the user's own recording). */
+    fun speakPrompt(prompt: VoicePrompt) {
+        promptSamples[prompt]?.let { playVoice(it) }
+    }
+
+    /** Which prompt, if any, a count change from [before] to [after] should trigger. */
+    fun promptFor(before: Int, after: Int): VoicePrompt? = when {
+        after / BRAVO_EVERY > before / BRAVO_EVERY -> VoicePrompt.BRAVO
+        after / CHEER_EVERY > before / CHEER_EVERY -> VoicePrompt.CHEER
+        else -> null
+    }
+
     fun stopSpeech() {
         pendingVoiceSample = null
         if (activeVoiceStream != 0) {
@@ -125,9 +159,11 @@ class FeedbackPlayer(context: Context) {
         soundPool.release()
     }
 
-    private companion object {
-        const val MAX_PLAYBACK_VOLUME = 1f
-        const val VOICE_PRIORITY = 1
-        const val COUNT_BEEP_PRIORITY = 2
+    companion object {
+        const val CHEER_EVERY = 10
+        const val BRAVO_EVERY = 100
+        private const val MAX_PLAYBACK_VOLUME = 1f
+        private const val VOICE_PRIORITY = 1
+        private const val COUNT_BEEP_PRIORITY = 2
     }
 }
