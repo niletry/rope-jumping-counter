@@ -10,6 +10,8 @@ final class ReplaySource {
         var total = 0
         var analyzed = 0
         var finished = false
+        /// The frame currently on screen, so the skeleton can be checked against the picture.
+        var image: UIImage?
     }
 
     private let files: [URL]
@@ -69,9 +71,10 @@ final class ReplaySource {
         let i = index
         index += 1
         progress.fed = index
+        guard let image = UIImage(contentsOfFile: files[i].path) else { onProgress(progress); return }
+        progress.image = image
         onProgress(progress)
         if processor.isBusy { return }
-        guard let image = UIImage(contentsOfFile: files[i].path) else { return }
         processor.detect(image: image, timestampMs: Int(Double(i) * Self.frameIntervalMs))
     }
 }

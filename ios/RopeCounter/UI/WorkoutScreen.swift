@@ -9,11 +9,17 @@ struct WorkoutScreen: View {
         if let workout = store.workout {
             ZStack {
                 Color.black.ignoresSafeArea()
-                if store.replayDir == nil {
-                    if store.cameraDenied {
-                        Text("没有摄像头权限，请在系统设置中允许后重试。")
-                            .foregroundStyle(.white).multilineTextAlignment(.center).padding(32)
-                    } else {
+                if store.replayDir == nil && store.cameraDenied {
+                    Text("没有摄像头权限，请在系统设置中允许后重试。")
+                        .foregroundStyle(.white).multilineTextAlignment(.center).padding(32)
+                } else if store.showPreview {
+                    if let image = store.replayProgress?.image {
+                        GeometryReader { geo in
+                            Image(uiImage: image).resizable().scaledToFill()
+                                .frame(width: geo.size.width, height: geo.size.height).clipped()
+                        }
+                        .ignoresSafeArea()
+                    } else if store.replayDir == nil {
                         CameraPreview(session: store.camera.session, mirrored: store.lens == .front).ignoresSafeArea()
                     }
                 }
@@ -79,6 +85,9 @@ struct WorkoutScreen: View {
                 }
                 Spacer()
                 HStack(spacing: 6) {
+                    controlButton(store.showPreview ? "eye.fill" : "eye.slash.fill", store.showPreview ? "隐藏画面" : "显示画面") {
+                        store.setShowPreview(!store.showPreview)
+                    }
                     if store.replayDir == nil {
                         controlButton("arrow.triangle.2.circlepath.camera", "切换摄像头", action: store.switchCamera)
                     }

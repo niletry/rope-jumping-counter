@@ -169,6 +169,14 @@ private struct VoicePromptCard: View {
                 }
             }
             .padding(.vertical, 4)
+            Divider().padding(.vertical, 4)
+            Toggle(isOn: Binding(get: { store.showPreview }, set: { store.setShowPreview($0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("显示摄像头画面").fontWeight(.medium)
+                    Text("关闭后只显示骨架，训练中也可随时切换").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 }

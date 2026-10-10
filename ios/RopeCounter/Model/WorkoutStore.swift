@@ -23,6 +23,8 @@ final class WorkoutStore {
     var customVoices: Set<VoicePromptKind> = []
     var recording: VoicePromptKind?
     var countBeepEnabled = false
+    /// Draw the camera picture behind the skeleton; off shows the skeleton alone on black.
+    var showPreview = true
     var cameraDenied = false
     /// Debug replay: directory of JPEG frames passed as `-replayDir` on launch.
     let replayDir: URL?
@@ -51,6 +53,7 @@ final class WorkoutStore {
         self.replayDir = replayDir
         history = historyStore.load()
         countBeepEnabled = Settings.countBeepEnabled
+        showPreview = Settings.showPreview
         feedback.countBeepEnabled = countBeepEnabled
         refreshCustomVoices()
         clock = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -261,6 +264,11 @@ final class WorkoutStore {
         feedback.countBeepEnabled = enabled
         countBeepEnabled = enabled
         if enabled { feedback.jump() }
+    }
+
+    func setShowPreview(_ enabled: Bool) {
+        Settings.showPreview = enabled
+        showPreview = enabled
     }
 
     func showError(_ message: String) {
