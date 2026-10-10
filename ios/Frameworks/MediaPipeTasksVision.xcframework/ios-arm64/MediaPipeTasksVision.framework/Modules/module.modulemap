@@ -1,6 +1,0 @@
-framework module MediaPipeTasksVision {
-  umbrella header "MediaPipeTasksVision.h"
-
-  export *
-  module * { export * }
-}

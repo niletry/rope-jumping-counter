@@ -26,11 +26,25 @@ targets:
       - package: RopeCore
       - framework: Frameworks/MediaPipeTasksVision.xcframework
         embed: false
+      - framework: Frameworks/MediaPipeTasksCommon.xcframework
+        embed: false
+      - sdk: AudioToolbox.framework
+      - sdk: Accelerate.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreGraphics.framework
+      - sdk: CoreImage.framework
+      - sdk: QuartzCore.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreVideo.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.yzrun.ropecounter
         INFOPLIST_FILE: RopeCounter/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
         OTHER_LDFLAGS: ["-lc++", "-ObjC"]
+        # The MediaPipe graph (model runtime) ships as a separate static archive per SDK that
+        # must be force-loaded, exactly as the CocoaPods spec does.
+        "OTHER_LDFLAGS[sdk=iphonesimulator*]": ["$(inherited)", "-force_load", "$(SRCROOT)/Frameworks/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a"]
+        "OTHER_LDFLAGS[sdk=iphoneos*]": ["$(inherited)", "-force_load", "$(SRCROOT)/Frameworks/graph_libraries/libMediaPipeTasksCommon_device_graph.a"]
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_STRICT_CONCURRENCY: minimal

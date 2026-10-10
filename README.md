@@ -16,7 +16,7 @@
 - 实时人体骨架和画面质量提示
 - 跳跃提示音、阶段振动提醒、训练时屏幕常亮
 - APK 内置“请站稳”“请保持全身入镜”和“三、二、一、开始”普通话音频，不依赖系统 TTS 或网络
-- APK 内置接近满幅音量的短促“嘀”声音频，每次有效计数播放一次
+- 每满 10 次播放“加油”、每满 100 次播放“真棒”，两条提示音都可以在设置页用自己的录音替换（最长 3 秒）；每次计数的“嘀”声默认关闭，可在设置页打开
 - 最近 100 条训练摘要保存在设备本地
 - 摄像头帧不保存、不上传
 
@@ -63,3 +63,23 @@ app/build/outputs/apk/debug/app-debug.apk
 - 当前本地历史使用 SharedPreferences 保存训练摘要，不保存视频或人体关键点。
 
 详细设计见 [docs/design.md](docs/design.md)。
+
+## iOS 版
+
+`ios/` 下是功能一致的 SwiftUI 版本，姿态识别同样使用 MediaPipe Pose Landmarker（同一个 `pose_landmarker_lite.task` 模型），检测算法与训练流程是 Kotlin 版的逐行移植，两端对同一份关键点数据的逐帧结果完全一致。
+
+```bash
+cd ios
+./fetch-mediapipe.sh            # 首次：下载 MediaPipe iOS 框架（约 1.3 GB，git 不跟踪）
+xcodegen generate               # brew install xcodegen
+open RopeCounter.xcodeproj      # 或用下面的命令行构建
+
+# 纯算法测试（不需要模拟器）
+cd RopeCore && swift test
+
+# 模拟器构建
+xcodebuild -project RopeCounter.xcodeproj -scheme RopeCounter \
+  -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+调试回放：把视频抽成 JPEG 帧（`ffmpeg -i video.mp4 -vf fps=30 -q:v 4 f%05d.jpg`）放进应用的 `Documents/replay/`，以 `-replayDir <路径>` 启动，应用会跳过设置页直接按自由跳绳回放，并把关键点导出到 `Documents/replay_landmarks.csv`，可用 `REPLAY_CSV=... swift test --filter ReplayHarness` 或 Android 的 `ReplayHarnessTest` 离线复算。模拟器上 MediaPipe 只能走 CPU，真机优先 GPU。

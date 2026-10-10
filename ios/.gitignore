@@ -2,3 +2,5 @@
 *.xcodeproj/
 xcuserdata/
 DerivedData/
+# MediaPipe xcframeworks are ~1.3 GB; run fetch-mediapipe.sh to download them.
+Frameworks/
