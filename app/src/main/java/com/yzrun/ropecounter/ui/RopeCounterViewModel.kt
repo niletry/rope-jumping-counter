@@ -35,7 +35,7 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
     private var lastGuidancePromptAtMs = Long.MIN_VALUE / 2
 
     private val _state = MutableStateFlow(
-        AppUiState(history = historyStore.load(), customVoices = customVoices(), countBeepEnabled = prefs.getBoolean(KEY_COUNT_BEEP, false)),
+        AppUiState(history = historyStore.load(), customVoices = customVoices(), countBeepEnabled = prefs.getBoolean(KEY_COUNT_BEEP, false), showPreview = prefs.getBoolean(KEY_SHOW_PREVIEW, true)),
     )
     val state: StateFlow<AppUiState> = _state.asStateFlow()
 
@@ -216,6 +216,11 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
         if (enabled) feedback.jump()
     }
 
+    fun setShowPreview(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_PREVIEW, enabled).apply()
+        _state.update { it.copy(showPreview = enabled) }
+    }
+
     fun previewVoice(prompt: VoicePrompt) {
         feedback.speakPrompt(prompt)
     }
@@ -288,5 +293,6 @@ class RopeCounterViewModel(application: Application) : AndroidViewModel(applicat
     private companion object {
         const val GUIDANCE_REMINDER_MS = 5_000L
         const val KEY_COUNT_BEEP = "count_beep_enabled"
+        const val KEY_SHOW_PREVIEW = "show_preview"
     }
 }

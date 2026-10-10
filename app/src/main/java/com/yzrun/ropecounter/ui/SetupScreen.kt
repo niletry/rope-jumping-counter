@@ -68,6 +68,8 @@ fun SetupScreen(
     onPreviewVoice: (VoicePrompt) -> Unit = {},
     countBeepEnabled: Boolean = false,
     onCountBeepChange: (Boolean) -> Unit = {},
+    showPreview: Boolean = true,
+    onShowPreviewChange: (Boolean) -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -168,6 +170,8 @@ fun SetupScreen(
                 onPreviewVoice = onPreviewVoice,
                 countBeepEnabled = countBeepEnabled,
                 onCountBeepChange = onCountBeepChange,
+                showPreview = showPreview,
+                onShowPreviewChange = onShowPreviewChange,
             )
 
             Spacer(Modifier.height(18.dp))
@@ -216,6 +220,8 @@ private fun VoicePromptCard(
     onPreviewVoice: (VoicePrompt) -> Unit,
     countBeepEnabled: Boolean,
     onCountBeepChange: (Boolean) -> Unit,
+    showPreview: Boolean,
+    onShowPreviewChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     var pendingPrompt by remember { mutableStateOf<VoicePrompt?>(null) }
@@ -291,6 +297,21 @@ private fun VoicePromptCard(
                     )
                 }
                 Switch(checked = countBeepEnabled, onCheckedChange = onCountBeepChange)
+            }
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("显示摄像头画面", fontWeight = FontWeight.Medium)
+                    Text(
+                        "关闭后只显示骨架，训练中也可随时切换",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = showPreview, onCheckedChange = onShowPreviewChange)
             }
         }
     }

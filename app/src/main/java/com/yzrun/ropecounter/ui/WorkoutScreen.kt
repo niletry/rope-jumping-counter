@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cameraswitch
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -54,6 +56,7 @@ fun WorkoutScreen(
     state: AppUiState,
     onPoseFrame: (PoseFrame) -> Unit,
     onSwitchCamera: () -> Unit,
+    onTogglePreview: () -> Unit = {},
     onTogglePause: () -> Unit,
     onFinish: () -> Unit,
     onDone: () -> Unit,
@@ -75,6 +78,7 @@ fun WorkoutScreen(
                 onPoseFrame = onPoseFrame,
                 onError = onError,
                 modifier = Modifier.fillMaxSize(),
+                showPreview = state.showPreview,
             )
         } else {
             CameraPoseView(
@@ -84,6 +88,7 @@ fun WorkoutScreen(
                 onPoseFrame = onPoseFrame,
                 onError = onError,
                 modifier = Modifier.fillMaxSize(),
+                showPreview = state.showPreview,
             )
         }
 
@@ -139,6 +144,8 @@ fun WorkoutScreen(
         MinimalBottomControls(
             workout = workout,
             guidance = state.detection?.guidance,
+            showPreview = state.showPreview,
+            onTogglePreview = onTogglePreview,
             onSwitchCamera = onSwitchCamera,
             onTogglePause = onTogglePause,
             onEnd = { showEndDialog = true },
@@ -176,6 +183,8 @@ fun WorkoutScreen(
 private fun MinimalBottomControls(
     workout: WorkoutSnapshot,
     guidance: String?,
+    showPreview: Boolean,
+    onTogglePreview: () -> Unit,
     onSwitchCamera: () -> Unit,
     onTogglePause: () -> Unit,
     onEnd: () -> Unit,
@@ -213,6 +222,12 @@ private fun MinimalBottomControls(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilledTonalIconButton(onClick = onTogglePreview, modifier = Modifier.size(42.dp)) {
+                    Icon(
+                        if (showPreview) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
+                        contentDescription = if (showPreview) "隐藏画面" else "显示画面",
+                    )
+                }
                 FilledTonalIconButton(onClick = onSwitchCamera, modifier = Modifier.size(42.dp)) {
                     Icon(Icons.Rounded.Cameraswitch, contentDescription = "切换摄像头")
                 }

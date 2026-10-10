@@ -43,6 +43,7 @@ fun CameraPoseView(
     onPoseFrame: (PoseFrame) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier,
+    showPreview: Boolean = true,
 ) {
     val context = LocalContext.current
     var hasPermission by remember {
@@ -68,6 +69,7 @@ fun CameraPoseView(
                 onError = onError,
                 modifier = Modifier.fillMaxSize(),
             )
+            if (!showPreview) Box(Modifier.fillMaxSize().background(Color.Black))
             PoseOverlay(
                 frame = poseFrame,
                 mirrorHorizontally = lensFacing == CameraSelector.LENS_FACING_FRONT,

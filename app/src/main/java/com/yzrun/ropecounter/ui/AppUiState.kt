@@ -26,4 +26,6 @@ data class AppUiState(
     val customVoices: Set<VoicePrompt> = emptySet(),
     val recording: VoicePrompt? = null,
     val countBeepEnabled: Boolean = false,
+    /** Draw the camera picture behind the skeleton; off shows the skeleton alone on black. */
+    val showPreview: Boolean = true,
 )

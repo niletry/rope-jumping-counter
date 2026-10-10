@@ -45,12 +45,15 @@ class MainActivity : ComponentActivity() {
                         onPreviewVoice = viewModel::previewVoice,
                         countBeepEnabled = state.countBeepEnabled,
                         onCountBeepChange = viewModel::setCountBeepEnabled,
+                        showPreview = state.showPreview,
+                        onShowPreviewChange = viewModel::setShowPreview,
                     )
 
                     AppScreen.WORKOUT -> WorkoutScreen(
                         state = state,
                         onPoseFrame = viewModel::onPoseFrame,
                         onSwitchCamera = viewModel::switchCamera,
+                        onTogglePreview = { viewModel.setShowPreview(!state.showPreview) },
                         onTogglePause = viewModel::togglePause,
                         onFinish = viewModel::finishWorkout,
                         onDone = viewModel::returnToSetup,

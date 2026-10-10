@@ -48,6 +48,7 @@ fun ReplayPoseView(
     onPoseFrame: (PoseFrame) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier,
+    showPreview: Boolean = true,
 ) {
     val context = LocalContext.current
     val currentOnPoseFrame by rememberUpdatedState(onPoseFrame)
@@ -124,7 +125,7 @@ fun ReplayPoseView(
     }
 
     Box(modifier = modifier.background(Color.Black)) {
-        currentBitmap?.let {
+        if (showPreview) currentBitmap?.let {
             Image(
                 bitmap = it,
                 contentDescription = null,
