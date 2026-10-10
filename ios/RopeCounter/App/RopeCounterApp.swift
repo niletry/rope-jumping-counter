@@ -18,11 +18,14 @@ struct RopeCounterApp: App {
         }
     }
 
-    /// `-replayDir /abs/path` on the command line (simulator) or launch arguments (device).
+    /// `-replayDir <path>` on the command line (simulator) or launch arguments (device).
+    /// A relative path is resolved inside the app's Documents directory, which is the only
+    /// place `devicectl device copy to` can put frames on a device.
     private static func replayDirArgument() -> URL? {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "-replayDir"), i + 1 < args.count else { return nil }
-        return URL(fileURLWithPath: args[i + 1])
+        let path = args[i + 1]
+        return path.hasPrefix("/") ? URL(fileURLWithPath: path) : AppDirectories.documents.appendingPathComponent(path)
     }
 }
 
