@@ -1,7 +1,7 @@
 # iOS 版跳绳计数器 设计文档
 
 日期：2026-10-10
-状态：待确认
+状态：已确认（2026-10-10，识别层由 Vision 改为 MediaPipe）
 
 ## 目标
 
@@ -28,30 +28,21 @@
 
 ## 技术选型
 
-### 姿态识别：Apple Vision，不用 MediaPipe
+### 姿态识别：MediaPipe Tasks Vision 1.0.0，与 Android 同一模型
 
-- `VNDetectHumanBodyPoseRequest` 是系统自带能力，零第三方依赖。本机访问 CocoaPods、GitHub、Maven 受限，MediaPipe iOS 无法可靠获取。
-- Vision 提供 19 个关节，包含检测算法需要的全部 8 个点：左右肩、髋、膝、踝。
-- 推理在 Neural Engine 上执行，不受 CPU 降频影响。
-
-坐标与质量映射（`VisionPoseAdapter`）：
-
-| MediaPipe | Vision | 处理 |
-|---|---|---|
-| x, y 归一化，原点左上 | 归一化，原点左下 | `y' = 1 - y` |
-| z | 无 | 固定 0 |
-| visibility, presence | confidence | 两者都取 confidence |
-| 33 个点，固定索引 | 19 个关节，按名字取 | 输出 33 槽数组，无对应的槽为 nil |
-
-索引映射：nose 0，leftEye 2，rightEye 5，leftEar 7，rightEar 8，leftShoulder 11，rightShoulder 12，leftElbow 13，rightElbow 14，leftWrist 15，rightWrist 16，leftHip 23，rightHip 24，leftKnee 25，rightKnee 26，leftAnkle 27，rightAnkle 28。neck 与 root 不映射。
-
-Vision 的 confidence 分布与 MediaPipe 的 visibility 不同，`MIN_POINT_VISIBILITY`、`MIN_AVERAGE_QUALITY` 两个阈值可能需要用真机回放数据重新标定。其余阈值与位移归一化无关于坐标来源，直接沿用。
+- 使用 CocoaPods 发布的 `MediaPipeTasksVision` + `MediaPipeTasksCommon` 1.0.0 的 xcframework，直接提交到 `ios/Frameworks/`，不走 CocoaPods，避免依赖 dl.google.com 的网络可达性。两者都带 `ios-arm64` 与 `ios-arm64_x86_64-simulator` 切片，模拟器可运行。
+- 模型文件复用 Android 工程的 `app/src/main/assets/pose_landmarker_lite.task`，以资源形式打进 iOS 包。
+- 同一模型、同样 33 个关键点、同样的 visibility / presence，JumpDetector 的全部阈值原样沿用，两端计数可直接对齐。
+- 运行模式 `.liveStream`，GPU 委托失败时退回 CPU（与 Android 相同）。
+- 坐标：MediaPipe 输出的归一化坐标原点在左上，与 Android 相同，不需要翻转。前摄不做镜像，和 Android 一致。
+- 图像方向：从 `AVCaptureConnection.videoRotationAngle` 推出 `UIImage.Orientation` 传给 `detectAsync(image:timestampInMilliseconds:)`。
 
 ### 工程结构
 
 ```
 ios/
   project.yml                 xcodegen 工程描述（本机已安装 xcodegen）
+  Frameworks/                 MediaPipeTasksVision.xcframework、MediaPipeTasksCommon.xcframework
   RopeCore/                   纯 Swift 本地包，无 UIKit 依赖，可在 macOS 上 swift test
     Package.swift
     Sources/RopeCore/
@@ -68,8 +59,7 @@ ios/
   RopeCounter/                SwiftUI 应用
     App/RopeCounterApp.swift  入口；读取启动参数 -replayDir
     Model/WorkoutStore.swift  @Observable 状态中心，对应 RopeCounterViewModel
-    Vision/VisionPoseAdapter.swift   Vision 结果 -> PoseFrame
-    Vision/PoseProcessor.swift       串行队列、忙碌时丢帧、调用 Vision
+    Vision/PoseLandmarkerProcessor.swift  封装 MPPPoseLandmarker（liveStream），isBusy 丢帧，结果 -> PoseFrame
     Camera/CameraSession.swift       AVCaptureSession，前/后摄，输出 CMSampleBuffer
     Camera/CameraPreview.swift       UIViewRepresentable 预览层
     Camera/PoseOverlay.swift         Canvas 骨架叠加
@@ -82,6 +72,7 @@ ios/
     UI/WorkoutScreen.swift
     UI/HistoryScreen.swift
     Resources/Sounds/*.wav           从 Android res/raw 复制
+    Resources/pose_landmarker_lite.task  从 Android assets 复制
     Info.plist 键：NSCameraUsageDescription、NSMicrophoneUsageDescription
 ```
 
@@ -91,9 +82,9 @@ Bundle ID `com.yzrun.ropecounter`，最低 iOS 17，仅竖屏，训练中禁止�
 
 ```
 AVCaptureVideoDataOutput (BGRA, 前摄镜像关闭)
-  -> PoseProcessor（串行队列，isBusy 时丢帧）
-  -> VNDetectHumanBodyPoseRequest
-  -> VisionPoseAdapter -> PoseFrame(33 槽)
+  -> PoseLandmarkerProcessor（isBusy 时丢帧）
+  -> MPPPoseLandmarker liveStream 回调
+  -> PoseFrame(33 个 PosePoint)
   -> 主线程 WorkoutStore.onPoseFrame
   -> JumpDetector -> WorkoutEngine -> SwiftUI
 ```
@@ -114,8 +105,8 @@ PREPARING（等待全身入镜并校准 20 帧）→ ARMED（等第一跳，不�
 ### 回放模式
 
 - 启动参数 `-replayDir <绝对路径>`；目录内 JPEG 按文件名排序，每 33.3 ms 投喂一帧，PoseProcessor 忙时跳过。
-- HUD 显示「回放 i/n · 已分析 k · Vision」。
-- 结束时把每帧 33 槽关键点写到 `Documents/replay_landmarks.csv`，列格式与 Android 相同：`ts,w,h,` 后接 33 组 `x,y,z,visibility,presence`；缺失槽写 `0,0,0,0,0`。
+- HUD 显示「回放 i/n · 已分析 k · GPU/CPU」。
+- 结束时把每帧 33 个关键点写到 `Documents/replay_landmarks.csv`，列格式与 Android 相同：`ts,w,h,` 后接 33 组 `x,y,z,visibility,presence`。
 - 模拟器：`xcrun simctl get_app_container booted com.yzrun.ropecounter data` 找到 Documents，拷入帧，`xcrun simctl launch booted com.yzrun.ropecounter -replayDir <path>`。
 - 真机：`xcrun devicectl device copy to` 把帧拷进应用 Documents，`devicectl device process launch --start-stopped` 传启动参数。
 
@@ -124,7 +115,7 @@ PREPARING（等待全身入镜并校准 20 帧）→ ARMED（等第一跳，不�
 1. `cd ios/RopeCore && swift test`：13 个移植用例全部通过，不需要模拟器。
 2. `REPLAY_CSV=<Android 导出的 landmarks.csv> swift test --filter ReplayHarness`：Swift 版 JumpDetector 对同一份 MediaPipe 关键点得到与 Kotlin 版完全相同的逐帧状态和 118 总数。这是两端算法一致的硬性验收。
 3. 模拟器回放 60 秒测试视频的 1795 帧：应用不崩溃，导出 CSV，HUD 正常。
-4. 真机（iPhone 16，iOS 26.6）回放同一视频：记录「已分析/总帧」与计数，与 Android 真机 123/123 比较；若因 Vision 置信度分布导致质量门控过严，用导出的 CSV 在 `swift test` 中调 `MIN_POINT_VISIBILITY` / `MIN_AVERAGE_QUALITY`。
+4. 模拟器与真机（iPhone 16，iOS 26.6）回放同一视频：记录「已分析/总帧」与计数，与 Android 真机 123/123 比较。
 5. 真机摄像头实拍：权限弹窗、前后摄切换、语音可听、录音替换生效、嘀开关生效、历史保存。
 
 ## 构建与部署
@@ -144,5 +135,5 @@ xcrun devicectl device install app --device BFB52381-CFCA-5D87-8D40-8274629B71AE
 ## 风险
 
 - Xcode 26.1.1 配 iOS 26.6 设备可能缺少 DeviceSupport，影响调试但不影响 `devicectl` 安装与运行；若安装被拒，需要升级 Xcode。
-- Vision 在手持晃动画面下的脚踝稳定性与 MediaPipe 不同，真机计数可能需要重新标定两个质量阈值。
+- MediaPipe iOS 框架是静态库，含 C++ 运行时，包体积增加约 40 MB。
 - 模拟器没有摄像头，摄像头路径只能在真机验证。
