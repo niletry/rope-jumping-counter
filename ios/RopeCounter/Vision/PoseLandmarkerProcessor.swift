@@ -15,7 +15,12 @@ final class PoseLandmarkerProcessor: NSObject, PoseLandmarkerLiveStreamDelegate 
     /// Which delegate the landmarker ended up on; shown in the replay HUD for diagnostics.
     private(set) var delegateName = "CPU"
 
-    private(set) var isBusy = false
+    private var busy = false
+    /// True while a frame is in flight. Safe to read from any thread.
+    var isBusy: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return busy
+    }
 
     init(onResult: @escaping (PoseFrame) -> Void, onError: @escaping (String) -> Void) throws {
         self.onResult = onResult
@@ -86,14 +91,14 @@ final class PoseLandmarkerProcessor: NSObject, PoseLandmarkerLiveStreamDelegate 
 
     private func submit(_ image: MPImage, timestampMs: Int, width: Int, height: Int) {
         lock.lock()
-        isBusy = true
+        busy = true
         inputSizes[timestampMs] = (width, height)
         lock.unlock()
         do {
             try landmarker.detectAsync(image: image, timestampInMilliseconds: timestampMs)
         } catch {
             lock.lock()
-            isBusy = false
+            busy = false
             inputSizes[timestampMs] = nil
             lock.unlock()
             onError(error.localizedDescription)
@@ -102,7 +107,7 @@ final class PoseLandmarkerProcessor: NSObject, PoseLandmarkerLiveStreamDelegate 
 
     func poseLandmarker(_ poseLandmarker: PoseLandmarker, didFinishDetection result: PoseLandmarkerResult?, timestampInMilliseconds: Int, error: Error?) {
         lock.lock()
-        isBusy = false
+        busy = false
         let size = inputSizes.removeValue(forKey: timestampInMilliseconds) ?? (0, 0)
         lock.unlock()
         if let error {

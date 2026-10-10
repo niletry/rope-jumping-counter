@@ -56,11 +56,8 @@ final class WorkoutStore {
         clock = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updateClock() }
         }
-        camera.shouldAnalyze = { [unowned self] in analyzeFrames }
-        camera.isProcessorBusy = { [weak self] in self?.processor?.isBusy ?? true }
-        camera.onFrame = { [weak self] buffer, orientation, ms in
-            self?.processor?.detect(sampleBuffer: buffer, orientation: orientation, timestampMs: ms)
-        }
+        camera.shouldAnalyze = { [weak self] in self?.analyzeFrames ?? false }
+        camera.onError = { [weak self] message in self?.showError(message) }
     }
 
     static func nowMs() -> Int64 { Int64(CACurrentMediaTime() * 1_000) }
@@ -86,7 +83,7 @@ final class WorkoutStore {
         replayProgress = nil
         analyzeFrames = true
         UIApplication.shared.isIdleTimerDisabled = true
-        ensureProcessor()
+        createProcessor()
         if let replayDir, let processor {
             let source = ReplaySource(directory: replayDir, processor: processor) { [weak self] p in
                 self?.replayProgress = p
@@ -106,8 +103,13 @@ final class WorkoutStore {
         }
     }
 
-    private func ensureProcessor() {
-        guard processor == nil else { return }
+    /// A new landmarker per workout, like Android: MediaPipe live-stream mode requires strictly
+    /// increasing timestamps per instance, and a replay restarts its clock at zero.
+    private func createProcessor() {
+        replay?.stop()
+        replay = nil
+        processor = nil
+        camera.processor = nil
         do {
             processor = try PoseLandmarkerProcessor(
                 onResult: { [weak self] frame in
@@ -118,6 +120,7 @@ final class WorkoutStore {
                 }
             )
             delegateName = processor?.delegateName ?? ""
+            camera.processor = processor
         } catch {
             showError(error.localizedDescription)
         }

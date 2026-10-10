@@ -12,6 +12,22 @@ final class VoiceRecorder: NSObject, AVAudioRecorderDelegate {
 
     var isRecording: Bool { recorder?.isRecording ?? false }
 
+    override init() {
+        super.init()
+        // A phone call or Siri ends the recording without a delegate callback; treat it as a
+        // discarded take so the UI never stays in the recording state.
+        NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted(_:)), name: AVAudioSession.interruptionNotification, object: nil)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func audioInterrupted(_ note: Notification) {
+        guard recorder != nil else { return }
+        DispatchQueue.main.async { self.stop(discard: true) }
+    }
+
     /// Asks for microphone permission; `completion` runs on the main queue.
     static func requestPermission(_ completion: @escaping (Bool) -> Void) {
         AVAudioApplication.requestRecordPermission { granted in
@@ -51,13 +67,27 @@ final class VoiceRecorder: NSObject, AVAudioRecorderDelegate {
     func stop(discard: Bool = false) -> Bool {
         guard let recorder else { return false }
         discardOnFinish = discard
-        recorder.stop()
+        if recorder.isRecording {
+            recorder.stop()  // the delegate finishes the take
+        } else {
+            finish(recorder, success: false)
+        }
         return !discard
     }
 
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        finish(recorder, success: flag)
+    }
+
+    func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+        finish(recorder, success: false)
+    }
+
+    private func finish(_ recorder: AVAudioRecorder, success: Bool) {
+        guard self.recorder === recorder else { return }
         let tmp = recorder.url
-        if flag && !discardOnFinish, let target = targetURL {
+        let size = (try? FileManager.default.attributesOfItem(atPath: tmp.path)[.size] as? Int) ?? 0
+        if success && !discardOnFinish && size > 0, let target = targetURL {
             try? FileManager.default.removeItem(at: target)
             try? FileManager.default.moveItem(at: tmp, to: target)
         } else {

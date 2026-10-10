@@ -11,9 +11,10 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private let queue = DispatchQueue(label: "com.yzrun.ropecounter.camera", qos: .userInitiated)
     private var input: AVCaptureDeviceInput?
     private(set) var lens: Lens = .front
-    var onFrame: ((CMSampleBuffer, UIImage.Orientation, Int) -> Void)?
+    /// Set from the main thread before `start()`; read on the capture queue.
+    weak var processor: PoseLandmarkerProcessor?
     var shouldAnalyze: () -> Bool = { true }
-    var isProcessorBusy: () -> Bool = { false }
+    var onError: ((String) -> Void)?
 
     static func requestAccess(_ completion: @escaping (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -31,6 +32,7 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             if let input = self.input { self.session.removeInput(input) }
             self.lens = lens
             let position: AVCaptureDevice.Position = lens == .front ? .front : .back
+            self.input = nil
             if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
                let input = try? AVCaptureDeviceInput(device: device), self.session.canAddInput(input) {
                 self.session.addInput(input)
@@ -42,11 +44,15 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 self.output.setSampleBufferDelegate(self, queue: self.queue)
                 if self.session.canAddOutput(self.output) { self.session.addOutput(self.output) }
             }
-            // Keep the sensor's native orientation; MediaPipe gets told how to rotate it.
-            if let connection = self.output.connection(with: .video) {
-                connection.isVideoMirrored = false
-            }
+            // The data output is left unrotated and unmirrored (its defaults); MediaPipe is told
+            // how to orient each buffer instead. Writing isVideoMirrored here would throw unless
+            // automaticallyAdjustsVideoMirroring is disabled first.
             self.session.commitConfiguration()
+            if self.input == nil {
+                DispatchQueue.main.async { self.onError?("摄像头启动失败") }
+            } else if !self.session.outputs.contains(self.output) {
+                DispatchQueue.main.async { self.onError?("无法读取摄像头画面") }
+            }
         }
     }
 
@@ -63,11 +69,11 @@ final class CameraSession: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard shouldAnalyze(), !isProcessorBusy() else { return }
+        guard shouldAnalyze(), let processor, !processor.isBusy else { return }
         let ms = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer)) * 1_000)
         // Portrait app: the sensor delivers landscape buffers; `.right` rotates them upright for
         // the back camera, `.leftMirrored` for the front camera (which is physically mirrored).
         let orientation: UIImage.Orientation = lens == .front ? .leftMirrored : .right
-        onFrame?(sampleBuffer, orientation, ms)
+        processor.detect(sampleBuffer: sampleBuffer, orientation: orientation, timestampMs: ms)
     }
 }
