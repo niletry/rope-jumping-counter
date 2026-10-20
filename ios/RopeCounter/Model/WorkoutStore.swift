@@ -28,6 +28,8 @@ final class WorkoutStore {
     var cameraDenied = false
     /// Debug replay: directory of JPEG frames passed as `-replayDir` on launch.
     let replayDir: URL?
+    /// Debug replay: `-replayRuns N` replays the frames N times as back-to-back workouts.
+    private var replayRunsLeft: Int
     var replayProgress: ReplaySource.Progress?
     var delegateName = ""
 
@@ -49,8 +51,9 @@ final class WorkoutStore {
 
     private static let guidanceReminderMs: Int64 = 5_000
 
-    init(replayDir: URL? = nil) {
+    init(replayDir: URL? = nil, replayRuns: Int = 1) {
         self.replayDir = replayDir
+        replayRunsLeft = replayRuns
         history = historyStore.load()
         countBeepEnabled = Settings.countBeepEnabled
         showPreview = Settings.showPreview
@@ -90,7 +93,7 @@ final class WorkoutStore {
         if let replayDir, let processor {
             let source = ReplaySource(directory: replayDir, processor: processor) { [weak self] p in
                 self?.replayProgress = p
-                if p.finished { self?.analyzeFrames = false }
+                if p.finished { self?.replayFinished() }
             }
             replay = source
             source.start()
@@ -106,13 +109,13 @@ final class WorkoutStore {
         }
     }
 
-    /// A new landmarker per workout, like Android: MediaPipe live-stream mode requires strictly
-    /// increasing timestamps per instance, and a replay restarts its clock at zero.
+    /// One landmarker for the whole app, unlike Android: releasing one on iOS blocks the main
+    /// thread inside MediaPipe's stats upload, which froze the second workout. The processor
+    /// keeps its own timestamps increasing across workouts.
     private func createProcessor() {
         replay?.stop()
         replay = nil
-        processor = nil
-        camera.processor = nil
+        guard processor == nil else { return }
         do {
             processor = try PoseLandmarkerProcessor(
                 onResult: { [weak self] frame in
@@ -126,6 +129,19 @@ final class WorkoutStore {
             camera.processor = processor
         } catch {
             showError(error.localizedDescription)
+        }
+    }
+
+    private func replayFinished() {
+        guard analyzeFrames else { return }
+        analyzeFrames = false
+        replayRunsLeft -= 1
+        NSLog("Replay finished: \(workout?.totalCount ?? 0) jumps, \(replayRunsLeft) runs left")
+        guard replayRunsLeft > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
+            finishWorkout()
+            returnToSetup()
+            startWorkout()
         }
     }
 

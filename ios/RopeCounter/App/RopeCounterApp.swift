@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct RopeCounterApp: App {
-    @State private var store = WorkoutStore(replayDir: RopeCounterApp.replayDirArgument())
+    @State private var store = WorkoutStore(replayDir: RopeCounterApp.replayDirArgument(), replayRuns: RopeCounterApp.replayRunsArgument())
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +16,12 @@ struct RopeCounterApp: App {
                     }
                 }
         }
+    }
+
+    private static func replayRunsArgument() -> Int {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "-replayRuns"), i + 1 < args.count, let n = Int(args[i + 1]) else { return 1 }
+        return max(n, 1)
     }
 
     /// `-replayDir <path>` on the command line (simulator) or launch arguments (device).

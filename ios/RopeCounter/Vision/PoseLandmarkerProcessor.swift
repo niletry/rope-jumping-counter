@@ -6,6 +6,9 @@ import RopeCore
 /// Wraps the MediaPipe pose landmarker in live-stream mode. One frame is in flight at a time:
 /// callers check `isBusy` and drop frames instead of queueing them, so latency never accumulates.
 ///
+/// Create one per app and keep it: releasing a landmarker joins MediaPipe's usage-stats upload
+/// (ClearcutLoggingClient), which can block forever when Google is unreachable.
+///
 /// A landmarker that stops answering (a GPU graph can die without ever calling the delegate) is
 /// replaced by a CPU one after `stallTimeoutMs`, so a workout never hangs on "请全身入镜".
 final class PoseLandmarkerProcessor: NSObject, PoseLandmarkerLiveStreamDelegate {
@@ -19,6 +22,8 @@ final class PoseLandmarkerProcessor: NSObject, PoseLandmarkerLiveStreamDelegate 
     private var recovering = false
     private var closed = false
     private var firstFrameLogged = false
+    private var lastTimestampMs = Int.min / 2
+    private var timestampOffsetMs = 0
 
     /// Longer than any sane inference, shorter than a user's patience.
     static let stallTimeoutMs: Int64 = 3_000
@@ -106,7 +111,7 @@ final class PoseLandmarkerProcessor: NSObject, PoseLandmarkerLiveStreamDelegate 
 
     /// Hands a frame to the landmarker. Frames are dropped while a dead landmarker is being
     /// replaced; the next ones go to the CPU landmarker.
-    private func submit(_ image: MPImage, timestampMs: Int, width: Int, height: Int) {
+    private func submit(_ image: MPImage, timestampMs sourceMs: Int, width: Int, height: Int) {
         ensureAlive()
         let now = Self.nowMs()
         lock.lock()
@@ -114,6 +119,13 @@ final class PoseLandmarkerProcessor: NSObject, PoseLandmarkerLiveStreamDelegate 
             lock.unlock()
             return
         }
+        // The landmarker lives for the whole app and live-stream mode needs strictly increasing
+        // timestamps, but every replay restarts its clock at zero: shift a source that went back.
+        if sourceMs + timestampOffsetMs <= lastTimestampMs {
+            timestampOffsetMs = lastTimestampMs + 1 - sourceMs
+        }
+        let timestampMs = sourceMs + timestampOffsetMs
+        lastTimestampMs = timestampMs
         busy = true
         inputSizes[timestampMs] = (width, height)
         watchdog.submitted(nowMs: now)
